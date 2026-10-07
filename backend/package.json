@@ -1,0 +1,13 @@
+{
+  "name": "equipment-service-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed:admin": "node scripts/seed-admin.js",
+    "seed:technicians": "node scripts/seed-technicians.js",
+    "test": "node --test"
+  }
+}
