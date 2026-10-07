@@ -9,6 +9,7 @@
     "seed:admin": "node scripts/seed-admin.js",
     "seed:technicians": "node scripts/seed-technicians.js",
     "seed:demo": "node scripts/seed-technicians.js && node scripts/seed-demo.js",
+    "demo:user": "node scripts/manage-demo-user.js",
     "test": "node --test"
   }
 }

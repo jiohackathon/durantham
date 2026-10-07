@@ -1,8 +1,15 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 
-export function createDatabase(file = process.env.DATABASE_FILE || './data/service-platform.sqlite') {
+// Keep runtime data outside the Git checkout by default. This avoids Windows permission
+// problems when a demo is launched from a protected or synced project folder.
+const defaultDatabaseFile = () => {
+  return path.join(os.tmpdir(), 'Duramint', 'service-platform.sqlite');
+};
+
+export function createDatabase(file = process.env.DATABASE_FILE || defaultDatabaseFile()) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec(`PRAGMA foreign_keys = ON;

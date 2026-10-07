@@ -26,7 +26,21 @@ npm.cmd run seed:demo
 
 Sign in through the frontend with `dispatcher@duramint.local` and the same `DEMO_PASSWORD`. The dispatcher can create and approve requests; approval triggers local technician matching.
 
-The API starts at `http://localhost:3000`; data is persisted in `backend/data/service-platform.sqlite`.
+### Add or reset a demo administrator
+
+This local-only command creates an administrator when the email is new, or resets its password when it already exists:
+
+```powershell
+$env:DEMO_USER_EMAIL = 'admin@duramint.local'
+$env:DEMO_USER_NAME = 'Demo Administrator'
+$env:DEMO_USER_PASSWORD = 'ChooseDemoPassword123!'
+$env:DEMO_USER_ROLE = 'admin'
+npm.cmd run demo:user
+```
+
+Use a different email to add another administrator. This command is for the local hackathon demo only; do not expose it in a deployed production app.
+
+The API starts at `http://localhost:3000`. By default, local demo data is persisted in `%TEMP%\Duramint\service-platform.sqlite`, outside the Git repository, so Windows file permissions do not block request creation. This is ideal for a hackathon demo; run the seed command again if Windows clears its temporary files.
 
 ## Current Supabase technician data
 
