@@ -17,6 +17,25 @@ npm start
 
 The API starts at `http://localhost:3000`; data is persisted in `backend/data/service-platform.sqlite`.
 
+## Current Supabase technician data
+
+The existing Supabase tables are supported without changing their column names. Configure `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in your shell, then use `GET /catalog/technicians`. It reads `Machine Breakdown`, `Overheating`, and `Excessive Vibration`, normalizes inconsistent column spellings such as `Technician-id` / `Technician ID`, and returns one technician list with an `issue_type` field. Add a future dataset by extending `SUPABASE_TECHNICIAN_TABLES` with `Table Name|issue_type`; no frontend rewrite is required.
+
+This catalog endpoint deliberately does not read the login/password tables. Keep authentication in the backend or Supabase Auth.
+
+### Run with the current Supabase tables
+
+In PowerShell, start the backend with the project values (do not commit the key):
+
+```powershell
+$env:JWT_SECRET = 'duramint-demo-secret'
+$env:SUPABASE_URL = 'https://your-project.supabase.co'
+$env:SUPABASE_PUBLISHABLE_KEY = 'your-publishable-key'
+npm.cmd start
+```
+
+In a second PowerShell window, run `node server.js` from `frontend/`, then open `http://localhost:5173`. The frontend calls `http://localhost:3000/catalog/technicians` automatically. If Supabase is unavailable or RLS denies the read, the page remains usable with its clearly labelled demo technician data.
+
 `seed:technicians` loads the 15 provided Chennai-area technician profiles, with their IDs, ratings, location, common skill set, and specialist focus. Set `DEMO_TECHNICIAN_PASSWORD` before running it if they need a password other than the demo default.
 
 ## Key endpoints
