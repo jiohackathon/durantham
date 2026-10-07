@@ -3,8 +3,10 @@ import { URL } from 'node:url';
 import { createDatabase, one, many, run, audit, notify } from './db.js';
 import { hashPassword, verifyPassword, issueToken, verifyToken } from './auth.js';
 import { COMMON_SKILLS, ISSUE_TYPES } from './domain.js';
+import { createSupabaseCatalog } from './supabase.js';
 
 const db = createDatabase();
+const supabaseCatalog = createSupabaseCatalog();
 const PORT = Number(process.env.PORT || 3000);
 const roles = (...allowed) => (user) => allowed.includes(user.role);
 const now = () => new Date().toISOString();
@@ -24,6 +26,8 @@ async function handler(req, res) {
   if (req.method === 'OPTIONS') return send(res, 204, {});
   const url = new URL(req.url, `http://${req.headers.host}`); const path = url.pathname; const payload = ['POST','PATCH'].includes(req.method) ? await body(req) : {};
   if (req.method === 'GET' && path === '/health') return send(res, 200, { ok:true, time:now() });
+  if (req.method === 'GET' && path === '/catalog/technicians') return send(res, 200, { source: 'supabase', technicians: await supabaseCatalog.technicians() });
+  if (req.method === 'GET' && path === '/catalog/issue-types') return send(res, 200, { source: 'supabase', issue_types: supabaseCatalog.issueTypes() });
   if (req.method === 'POST' && path === '/auth/register') { const {name,email,password,role='requester',site=null,skills=[]}=payload; if (!name || !email || !password) throw Object.assign(new Error('name, email and password are required'), {status:400}); if (!['requester','technician'].includes(role)) throw Object.assign(new Error('Public registration permits requester or technician only'),{status:403}); const r=run(db,'INSERT INTO users (name,email,password_hash,role,site,skills) VALUES (?,?,?,?,?,?)',name,email.toLowerCase(),hashPassword(password),role,site,JSON.stringify(skills)); const user=one(db,'SELECT id,name,email,role,site FROM users WHERE id=?',r.lastInsertRowid); audit(db,user.id,'user',user.id,'registered'); return send(res,201,{user,token:issueToken(user)}); }
   if (req.method === 'POST' && path === '/auth/login') { const user=one(db,'SELECT * FROM users WHERE email=?',String(payload.email||'').toLowerCase()); if (!user || !verifyPassword(payload.password||'',user.password_hash)) throw Object.assign(new Error('Invalid email or password'),{status:401}); return send(res,200,{token:issueToken(user),user:{id:user.id,name:user.name,email:user.email,role:user.role,site:user.site}}); }
   const user = requireUser(req);
