@@ -64,19 +64,51 @@ npm.cmd start
 
 The frontend prints the local address to open. This project uses `npm.cmd start`, not `npm run dev`.
 
-## Important local-demo limitation
+## Shared website mode — all laptops use the same data
 
-The present version stores accounts, machines, and requests in a local SQLite file on each computer. Therefore teammates running their own copies have separate accounts and requests. The shared Supabase project currently provides the technician catalog only.
+For the shared production-style demo, Duramint stores users, machines, requests, assignments, logs, notifications, and audit entries in Supabase Postgres. Each person opens the same website URL; they do not install Node.js or create an administrator on their own laptop.
 
-## Publishing as one shared website
+The old local SQLite mode still works for offline development. Shared mode is enabled only when `APP_DATABASE=supabase` is set on the backend host.
 
-For a shared website, all application data must be stored in Supabase Postgres, not in the local SQLite file. Once that migration is complete, create the administrator account once in the hosted database; all users then sign in through the same website.
+### Set up the shared database once
 
-This repository is ready for a simple one-URL Render deployment: the Node service serves both the frontend and API. In Render, create a **Web Service** from this GitHub repository, set **Root Directory** to `backend`, **Build Command** to `npm install`, **Start Command** to `npm start`, and **Health Check Path** to `/health`. Add `NODE_VERSION=24.21.0`, `AUTO_SEED_DEMO=true`, a long `DEMO_ADMIN_PASSWORD`, and a long `JWT_SECRET` in Render's environment-variable page, then deploy. The public `onrender.com` address is the address to share.
+1. In Supabase, open **SQL Editor**.
+2. Open `supabase/migrations/001_duramint_shared_app.sql` from this repository and run its full contents once.
+3. The migration adds only tables named `duramint_*`; it does not change the existing technician tables.
+4. In **Project Settings → API**, copy the **service_role** key. Keep it private: it belongs only in the backend host’s environment variables, never in frontend code or Git.
 
-This is a hackathon demo deployment. Render Free services sleep after 15 minutes without requests, so the first request afterwards can take about a minute. Its local files are erased after a restart or redeploy; the service recreates the admin, technicians, and machines from the configured environment variables, but request history is not durable.
+### Deploy the one-URL website on Render
 
-For durable shared data, the next step is to migrate users, machines, requests, and workflow data to Supabase Postgres. The existing Supabase technician tables can remain unchanged.
+Create a Render **Web Service** from the GitHub repository with:
+
+```text
+Root Directory: backend
+Build Command: npm install
+Start Command: npm start
+Health Check Path: /health
+```
+
+Add these environment variables in Render:
+
+```text
+NODE_VERSION=24.21.0
+APP_DATABASE=supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=<private sb_secret key>
+AUTO_SEED_DEMO=true
+DEMO_ADMIN_EMAIL=admin@duramint.local
+DEMO_ADMIN_NAME=Duramint Administrator
+DEMO_ADMIN_PASSWORD=<choose a strong password>
+JWT_SECRET=<long random value>
+```
+
+Deploy, then share the public `onrender.com` URL. The first deployment creates the administrator, technicians, and machines in the common Supabase database. It does not reset or overwrite them on later deployments.
+
+### Sign in to the shared website
+
+Use the email and password configured in Render as `DEMO_ADMIN_EMAIL` and `DEMO_ADMIN_PASSWORD`. Every laptop uses those same shared records. Administrators can add other administrators, dispatchers, technicians, and requesters from **Settings → Add user** in the website.
+
+Render Free services may sleep after 15 minutes without traffic, so the first visit afterwards can take about a minute. Unlike SQLite, the Supabase data remains available after a Render restart or redeploy.
 
 ## Security checklist before sharing a public URL
 
