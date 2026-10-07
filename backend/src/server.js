@@ -1,17 +1,63 @@
 import http from 'node:http';
 import { URL } from 'node:url';
+import fs from 'node:fs';
+import nodePath from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createDatabase, one, many, run, audit, notify } from './db.js';
 import { hashPassword, verifyPassword, issueToken, verifyToken } from './auth.js';
-import { COMMON_SKILLS, ISSUE_TYPES } from './domain.js';
+import { COMMON_SKILLS, ISSUE_TYPES, TECHNICIANS } from './domain.js';
 import { createSupabaseCatalog } from './supabase.js';
 
 const db = createDatabase();
 const supabaseCatalog = createSupabaseCatalog();
 const PORT = Number(process.env.PORT || 3000);
+const corsOrigin = process.env.CORS_ORIGIN || '*';
+const frontendRoot = nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), '../../frontend');
 const roles = (...allowed) => (user) => allowed.includes(user.role);
 const now = () => new Date().toISOString();
 
-function send(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Authorization, Content-Type' }); res.end(JSON.stringify(body)); }
+function send(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': corsOrigin, 'Access-Control-Allow-Headers': 'Authorization, Content-Type' }); res.end(JSON.stringify(body)); }
+function serveFrontend(res, pathname) {
+  const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
+  const target = nodePath.resolve(frontendRoot, relative);
+  const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.ico': 'image/x-icon' };
+  if (!target.startsWith(`${frontendRoot}${nodePath.sep}`) || !fs.existsSync(target) || fs.statSync(target).isDirectory()) return false;
+  res.writeHead(200, { 'Content-Type': mime[nodePath.extname(target)] || 'application/octet-stream' });
+  fs.createReadStream(target).pipe(res);
+  return true;
+}
+
+function seedHostedDemo() {
+  if (process.env.AUTO_SEED_DEMO !== 'true') return;
+
+  const password = process.env.DEMO_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD;
+  if (!password || password.length < 8) {
+    console.warn('AUTO_SEED_DEMO is enabled, but DEMO_ADMIN_PASSWORD is missing or too short. No administrator was created.');
+    return;
+  }
+
+  const email = String(process.env.DEMO_ADMIN_EMAIL || 'admin@duramint.local').trim().toLowerCase();
+  const name = String(process.env.DEMO_ADMIN_NAME || 'Duramint Administrator').trim();
+  let administrator = one(db, 'SELECT id FROM users WHERE email=?', email);
+  if (!administrator) {
+    const result = run(db, 'INSERT INTO users (name,email,password_hash,role,site,skills) VALUES (?,?,?,?,?,?)', name, email, hashPassword(password), 'admin', 'Ambattur Industrial Estate', '[]');
+    administrator = { id: Number(result.lastInsertRowid) };
+    console.log(`Hosted demo administrator created: ${email}`);
+  }
+
+  for (const technician of TECHNICIANS) {
+    if (!one(db, 'SELECT id FROM users WHERE technician_id=?', technician.technicianId)) {
+      run(db, 'INSERT INTO users (technician_id,name,email,password_hash,role,site,skills,skill_focus,rating) VALUES (?,?,?,?,?,?,?,?,?)', technician.technicianId, technician.name, `${technician.technicianId.toLowerCase()}@service-demo.local`, hashPassword(process.env.DEMO_TECHNICIAN_PASSWORD || 'Technician123!'), 'technician', technician.site, JSON.stringify(technician.skills), technician.skillFocus, technician.rating);
+    }
+  }
+
+  const machines = [['M-104', 'Hydraulic Press 04', 'Ambattur Industrial Estate'], ['M-221', 'CNC Router 12', 'Sriperumbudur'], ['M-086', 'Conveyor Line 02', 'Padi']];
+  for (const [code, name, site] of machines) {
+    if (!one(db, 'SELECT id FROM machines WHERE code=?', code)) run(db, 'INSERT INTO machines (code,name,site,required_skills) VALUES (?,?,?,?)', code, name, site, JSON.stringify(COMMON_SKILLS));
+  }
+}
+
+seedHostedDemo();
 async function body(req) { let raw = ''; for await (const chunk of req) raw += chunk; if (!raw) return {}; try { return JSON.parse(raw); } catch { throw Object.assign(new Error('Body must be valid JSON'), { status: 400 }); } }
 function requireUser(req) { const value = req.headers.authorization || ''; if (!value.startsWith('Bearer ')) throw Object.assign(new Error('Authentication required'), { status: 401 }); const claims = verifyToken(value.slice(7)); const user = one(db, 'SELECT id, name, email, role, site, skills, active FROM users WHERE id = ?', claims.sub); if (!user || !user.active) throw Object.assign(new Error('Account is unavailable'), { status: 401 }); return { ...user, skills: JSON.parse(user.skills) }; }
 function allowed(user, predicate) { if (!predicate(user)) throw Object.assign(new Error('Insufficient permission'), { status: 403 }); }
@@ -26,6 +72,9 @@ function bestTechnician(req) { const needed = req.required_skills; const preferr
 async function handler(req, res) {
   if (req.method === 'OPTIONS') return send(res, 204, {});
   const url = new URL(req.url, `http://${req.headers.host}`); const path = url.pathname; const payload = ['POST','PATCH'].includes(req.method) ? await body(req) : {};
+  if (req.method === 'GET' && (path === '/' || /\.(?:html|js|css|ico)$/.test(path))) {
+    if (serveFrontend(res, path)) return;
+  }
   if (req.method === 'GET' && path === '/health') return send(res, 200, { ok:true, time:now() });
   if (req.method === 'GET' && path === '/catalog/technicians') {
     try { return send(res, 200, { source: 'supabase', technicians: await supabaseCatalog.technicians() }); }
