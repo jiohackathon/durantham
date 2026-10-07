@@ -8,6 +8,7 @@
     "dev": "node --watch src/server.js",
     "seed:admin": "node scripts/seed-admin.js",
     "seed:technicians": "node scripts/seed-technicians.js",
+    "seed:demo": "node scripts/seed-technicians.js && node scripts/seed-demo.js",
     "test": "node --test"
   }
 }

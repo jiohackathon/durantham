@@ -15,6 +15,17 @@ npm run seed:technicians
 npm start
 ```
 
+### One-command local demo data
+
+Run this once before the demo to create a dispatcher account, three machines, technicians, and sample service requests in the local SQLite database:
+
+```powershell
+$env:DEMO_PASSWORD = 'Demo123!'
+npm.cmd run seed:demo
+```
+
+Sign in through the frontend with `dispatcher@duramint.local` and the same `DEMO_PASSWORD`. The dispatcher can create and approve requests; approval triggers local technician matching.
+
 The API starts at `http://localhost:3000`; data is persisted in `backend/data/service-platform.sqlite`.
 
 ## Current Supabase technician data
