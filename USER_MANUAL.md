@@ -38,8 +38,9 @@ Do not use this example password for a public deployment.
 2. The request is `pending approval`.
 3. An administrator or dispatcher approves it. Duramint matches a technician by site, common skills, specialist skills, workload, and rating.
 4. The request becomes `assigned`, or `exception` if no suitable technician is available.
-5. The assigned technician opens **Service Requests**, selects **Start work**, adds notes if needed, then selects **Complete** and supplies a verification note.
+5. The assigned technician opens **Service Requests**, selects **Start work**, adds notes if needed, then selects **Complete** and supplies a verification note. They can also select **Add advice** to record maintenance suggestions for the requester.
 6. An administrator or dispatcher can select **Reassign** for an assigned, in-progress, or exception request. They choose another active technician and enter a reason. They can select **Cancel** for a pending, assigned, or exception request. Requests are never deleted, so the demo retains its history.
+7. Once work is completed, the requester can select **Give review**, choose a rating from 1 to 5, and submit feedback. Select **View** on any request to see its original problem description and the complete shared history: approvals, reassignment reasons, work notes, verification, advice, and reviews.
 
 ## Run locally
 

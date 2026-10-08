@@ -92,6 +92,16 @@ async function requestRows() {
   }));
 }
 async function getRequest(id) { return (await requestRows()).find(row => String(row.id) === String(id)) || null; }
+async function requestDetail(id) {
+  const [request, logs, users] = await Promise.all([
+    getRequest(id),
+    list(tables.logs, { request_id: equal(id), order: 'created_at.asc' }),
+    list(tables.users)
+  ]);
+  if (!request) return null;
+  const nameById = new Map(users.map(person => [String(person.id), person.name]));
+  return { ...request, logs: logs.map(log => ({ ...log, author_name: nameById.get(String(log.author_id)) || 'Unknown user' })) };
+}
 async function bestTechnician(request) {
   const [technicians, active] = await Promise.all([
     list(tables.users, { role: equal('technician'), active: isTrue }),
@@ -184,11 +194,11 @@ async function handler(req, res) {
     const record = await insert(tables.requests, { machine_id, requester_id: user.id, title, description, issue_type, priority, required_skills: issue ? [...new Set([...COMMON_SKILLS, ...required_skills])] : required_skills, preferred_skills: issue ? issue.preferredSkills : [], required_parts, due_at });
     await audit(user.id, 'service_request', record.id, 'created', { issue_type }); return send(res, 201, await getRequest(record.id));
   }
-  const match = path.match(/^\/requests\/(\d+)(?:\/(approve|start|complete|reassign|cancel|exception|logs|attachments))?$/);
+  const match = path.match(/^\/requests\/(\d+)(?:\/(approve|start|complete|reassign|cancel|exception|advice|review|logs|attachments))?$/);
   if (match) {
     const id = Number(match[1]), action = match[2], request = await getRequest(id);
     if (!request) throw Object.assign(new Error('Service request not found'), { status: 404 });
-    if (!action && req.method === 'GET') { if ((user.role === 'requester' && String(request.requester_id) !== String(user.id)) || (user.role === 'technician' && String(request.assigned_to) !== String(user.id))) throw Object.assign(new Error('Insufficient permission'), { status: 403 }); return send(res, 200, request); }
+    if (!action && req.method === 'GET') { if ((user.role === 'requester' && String(request.requester_id) !== String(user.id)) || (user.role === 'technician' && String(request.assigned_to) !== String(user.id))) throw Object.assign(new Error('Insufficient permission'), { status: 403 }); return send(res, 200, await requestDetail(id)); }
     if (req.method === 'POST' && action === 'approve') {
       allowed(user, roles('admin', 'dispatcher')); if (request.status !== 'pending_approval') throw Object.assign(new Error('Only pending requests can be approved'), { status: 409 });
       await transition(user, request, 'approved', 'Request approved'); const technician = payload.technician_id ? await one(tables.users, { id: equal(payload.technician_id), role: equal('technician'), active: isTrue }) : await bestTechnician(request);
@@ -197,6 +207,8 @@ async function handler(req, res) {
     }
     if (req.method === 'POST' && action === 'start') { if (user.role !== 'technician' || String(request.assigned_to) !== String(user.id)) throw Object.assign(new Error('Only the assigned technician can start work'), { status: 403 }); await transition(user, request, 'in_progress', payload.note || 'Work started'); return send(res, 200, await getRequest(id)); }
     if (req.method === 'POST' && action === 'complete') { if (user.role !== 'technician' || String(request.assigned_to) !== String(user.id)) throw Object.assign(new Error('Only the assigned technician can complete work'), { status: 403 }); if (!payload.verification_note) throw Object.assign(new Error('verification_note is required'), { status: 400 }); await transition(user, request, 'completed', payload.verification_note); await notify(request.requester_id, `Request #${id} has been completed`); return send(res, 200, await getRequest(id)); }
+    if (req.method === 'POST' && action === 'advice') { if (user.role !== 'technician' || String(request.assigned_to) !== String(user.id)) throw Object.assign(new Error('Only the assigned technician can add advice'), { status: 403 }); if (!['assigned', 'in_progress', 'completed'].includes(request.status)) throw Object.assign(new Error('Advice can only be added to an assigned or completed request'), { status: 409 }); if (!String(payload.note || '').trim()) throw Object.assign(new Error('advice note is required'), { status: 400 }); const log = await insert(tables.logs, { request_id: id, author_id: user.id, note: String(payload.note).trim(), status: 'advice' }); await audit(user.id, 'service_request', id, 'advice_added'); return send(res, 201, log); }
+    if (req.method === 'POST' && action === 'review') { if (user.role !== 'requester' || String(request.requester_id) !== String(user.id)) throw Object.assign(new Error('Only the requester can submit a review'), { status: 403 }); if (request.status !== 'completed') throw Object.assign(new Error('A review can be submitted only after the work is completed'), { status: 409 }); const rating = Number(payload.rating); const note = String(payload.note || '').trim(); if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !note) throw Object.assign(new Error('rating from 1 to 5 and review note are required'), { status: 400 }); const log = await insert(tables.logs, { request_id: id, author_id: user.id, note: `Rating: ${rating}/5\n${note}`, status: 'review' }); await audit(user.id, 'service_request', id, 'review_added', { rating }); return send(res, 201, log); }
     if (req.method === 'POST' && action === 'reassign') { allowed(user, roles('admin', 'dispatcher')); if (!['assigned', 'in_progress', 'exception'].includes(request.status)) throw Object.assign(new Error('Request cannot be reassigned in its current state'), { status: 409 }); const technician = await one(tables.users, { id: equal(payload.technician_id), role: equal('technician'), active: isTrue }); if (!technician) throw Object.assign(new Error('Active technician not found'), { status: 404 }); await update(tables.requests, { id: equal(id) }, { assigned_to: technician.id, status: 'assigned', updated_at: now() }); await insert(tables.logs, { request_id: id, author_id: user.id, note: payload.reason || `Reassigned to ${technician.name}`, status: 'assigned' }); await audit(user.id, 'service_request', id, 'reassigned', { technician_id: technician.id }); await notify(technician.id, `You were assigned request #${id}: ${request.title}`); return send(res, 200, await getRequest(id)); }
     if (req.method === 'POST' && action === 'cancel') { allowed(user, roles('admin', 'dispatcher')); if (!['pending_approval', 'approved', 'assigned', 'exception'].includes(request.status)) throw Object.assign(new Error('Request cannot be cancelled in its current state'), { status: 409 }); await transition(user, request, 'cancelled', payload.note || 'Request cancelled by operations'); return send(res, 200, await getRequest(id)); }
     if (req.method === 'POST' && action === 'exception') { allowed(user, roles('admin', 'dispatcher', 'technician')); if (user.role === 'technician' && String(request.assigned_to) !== String(user.id)) throw Object.assign(new Error('Only the assigned technician can report an exception'), { status: 403 }); await transition(user, request, 'exception', payload.note || 'Operational exception reported'); await notify(request.requester_id, `Request #${id} needs attention`); return send(res, 200, await getRequest(id)); }
