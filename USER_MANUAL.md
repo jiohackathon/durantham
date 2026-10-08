@@ -38,7 +38,8 @@ Do not use this example password for a public deployment.
 2. The request is `pending approval`.
 3. An administrator or dispatcher approves it. Duramint matches a technician by site, common skills, specialist skills, workload, and rating.
 4. The request becomes `assigned`, or `exception` if no suitable technician is available.
-5. The assigned technician starts work, adds notes if needed, then completes it with a verification note.
+5. The assigned technician opens **Service Requests**, selects **Start work**, adds notes if needed, then selects **Complete** and supplies a verification note.
+6. An administrator or dispatcher can select **Reassign** for an assigned, in-progress, or exception request. They choose another active technician and enter a reason. They can select **Cancel** for a pending, assigned, or exception request. Requests are never deleted, so the demo retains its history.
 
 ## Run locally
 
@@ -63,6 +64,27 @@ npm.cmd start
 ```
 
 The frontend prints the local address to open. This project uses `npm.cmd start`, not `npm run dev`.
+
+## Save shared-database settings once per laptop
+
+The `$env:` commands apply only to the current PowerShell window. To avoid entering them every time, create a private `backend\.env` file once. It is ignored by Git and must never be sent to WhatsApp or pushed to GitHub.
+
+```powershell
+cd "C:\path\to\durantham\backend"
+Copy-Item .env.example .env
+notepad .env
+```
+
+In `.env`, set `APP_DATABASE=supabase`, the project's `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and one long `JWT_SECRET`. On the first laptop only, also set `AUTO_SEED_DEMO=true` and choose the administrator details. Start once to seed the shared account, then change `AUTO_SEED_DEMO=false`.
+
+After that, every later start on that laptop is simply:
+
+```powershell
+cd "C:\path\to\durantham\backend"
+npm.cmd start
+```
+
+For a multi-laptop local test, each laptop needs its own private `.env` with the same Supabase URL, Secret key, and JWT secret. They do **not** need to seed the administrator again.
 
 ## Shared website mode — all laptops use the same data
 
